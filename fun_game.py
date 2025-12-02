@@ -341,7 +341,7 @@ def play():
             btn.update(SCREEN)
             player_area_rects[players[0]] = btn
 
-            score_text = get_font(20).render(f"Score: {players[0].total_score}", True, "black")
+            score_text = get_font(20).render(f"Score: {players[0].total_score}", True, "red")
             SCREEN.blit(score_text, score_text.get_rect(center=(rect.centerx, rect.centery + 15)))
 
 
@@ -363,7 +363,7 @@ def play():
             btn.update(SCREEN)
             player_area_rects[players[1]] = btn
 
-            score_text = get_font(20).render(f"{players[1].total_score}", True, "black")
+            score_text = get_font(20).render(f"{players[1].total_score}", True, "red")
             SCREEN.blit(score_text, score_text.get_rect(center=(rect.centerx, rect.centery + 30)))
 
 
@@ -385,7 +385,7 @@ def play():
             btn.update(SCREEN)
             player_area_rects[players[2]] = btn
 
-            score_text = get_font(20).render(f"Score: {players[2].total_score}", True, "black")
+            score_text = get_font(20).render(f"Score: {players[2].total_score}", True, "red")
             SCREEN.blit(score_text, score_text.get_rect(center=(rect.centerx, rect.centery + 15)))
 
 
@@ -407,7 +407,7 @@ def play():
             btn.update(SCREEN)
             player_area_rects[players[3]] = btn
 
-            score_text = get_font(20).render(f"{players[3].total_score}", True, "black")
+            score_text = get_font(20).render(f"{players[3].total_score}", True, "red")
             SCREEN.blit(score_text, score_text.get_rect(center=(rect.centerx, rect.centery + 30)))
 
 
