@@ -65,22 +65,53 @@ def end_round(player):
     """
     number_cards = [c for c in player.hand if isinstance(c, int)]
 
+    busted = False
+
     # Bust if duplicates
     if len(number_cards) != len(set(number_cards)):
-        print(f"Player {player.number} busted!")
-        player.round_score = 0
+        busted = True
+
     # Bust if 7 number cards
     elif len(number_cards) >= 7:
-        print(f"Player {player.number} reached 7 cards!")
-        player.round_score = sum(number_cards)
+        busted = True
+
+    # Check for second chance
+    if busted and "second chance" in player.hand:
+        player.hand.remove("second chance")
+        print(f"Player {player.number} used Second Chance! Avoided bust.")
+        busted = False  
+
+    # Freeze self-targeted: ends turn immediately if freeze in hand
+    if "freeze" in player.hand:
+        print(f"Player {player.number} drew a Freeze card! Turn ends immediately.")
+        player.hand.remove("freeze")
+
+    if busted:
+        print(f"Player {player.number} busted!")
+        player.round_score = 0
     else:
         player.round_score = sum(number_cards)
+
+        # Apply bonus cards
+        for card in player.hand:
+            if isinstance(card, str) and card not in ("freeze", "second chance"):
+                if card.startswith("+"):
+                    try:
+                        value = int(card[1:])
+                        player.round_score += value
+                    except ValueError:
+                        pass
+                elif card.startswith("*"):
+                    try:
+                        value = int(card[1:])
+                        player.round_score *= value
+                    except ValueError:
+                        pass
 
     player.total_score += player.round_score
     player.hand.clear()  # Clear hand for next round
 
     print(f"Player {player.number} gained {player.round_score} points. Total: {player.total_score}")
-
 
 def end_game(players, deck):
     """
@@ -126,7 +157,6 @@ class Deck:
 
         # special cards
         for _ in range(3):
-            self.deck.append("flip3")
             self.deck.append("freeze")
             self.deck.append("second chance")
 
@@ -145,7 +175,7 @@ class Deck:
     def display_player_cards(self, surface, player, position):
         """
         Draws the player's cards.
-        Returns list of clickable special card rects: [(rect, card_name), ...]
+        Returns list of clickable special card buttons: [(button, card_name), ...]
         """
         NUMBER_WIDTH, NUMBER_HEIGHT = 90, 120
         SMALL_WIDTH, SMALL_HEIGHT = 70, 55
@@ -154,45 +184,63 @@ class Deck:
         num_cards = [c for c in player.hand if isinstance(c, int)]
         bonus_cards = [c for c in player.hand if isinstance(c, str) and c not in ("freeze", "flip3", "second chance")]
         special_cards = [c for c in player.hand if c in ("freeze", "flip3", "second chance")]
-        for p in players:
-            round_score = sum(num_cards) 
-            
-        clickable_rects = []
+
+        clickable_buttons = []
 
         # Starting position by player
         if position == "top":
-            x, y = 300, 140
-            dx, dy = SMALL_WIDTH + 10, 0
+            x, y = 300, 50
+            dx, dy = SMALL_WIDTH + 5, 0
             number_y_offset = SMALL_HEIGHT + 14
         elif position == "bottom":
-            x, y = 300, 620
-            dx, dy = SMALL_WIDTH + 10, 0
+            x, y = 300, 550
+            dx, dy = SMALL_WIDTH + 5, 0
             number_y_offset = SMALL_HEIGHT + 14
         elif position == "left":
             x, y = 80, 220
-            dx, dy = 0, SMALL_HEIGHT + 10
+            dx, dy = 0, SMALL_HEIGHT + 5
             number_y_offset = NUMBER_HEIGHT + 15
         elif position == "right":
             x, y = 1080, 220
-            dx, dy = 0, SMALL_HEIGHT + 10
+            dx, dy = 0, SMALL_HEIGHT + 5
             number_y_offset = NUMBER_HEIGHT + 15
 
-        # Draw bonus + special cards first (small)
+        # Draw bonus + special cards first (small cards)
         for card in bonus_cards + special_cards:
+
             rect = pygame.Rect(x, y, SMALL_WIDTH, SMALL_HEIGHT)
             color = (240, 210, 50) if card in bonus_cards else (110, 110, 180)
+
+            # Card background
             pygame.draw.rect(surface, color, rect)
             pygame.draw.rect(surface, (0, 0, 0), rect, 3)
-            text = font.render(str(card), True, (0, 0, 0))
-            surface.blit(text, text.get_rect(center=rect.center))
 
+            # --- SPECIAL CARD → BUTTON ---
             if card in special_cards:
-                clickable_rects.append((rect, card))
+
+                button = Button(
+                    image=None,
+                    pos=rect.center,
+                    text_input=str(card),
+                    font=get_font(20),
+                    base_color="white",
+                    hovering_color="blue"
+                )
+
+                button.changeColor(pygame.mouse.get_pos())
+                button.update(surface)
+
+                clickable_buttons.append((button, card))
+            
+            # --- BONUS CARD (just draw text) ---
+            else:
+                text = font.render(str(card), True, (0, 0, 0))
+                surface.blit(text, text.get_rect(center=rect.center))
 
             x += dx
             y += dy
 
-        # Draw number cards in a row/column
+        # Draw number cards
         if position in ("top", "bottom"):
             x = 200
             y += number_y_offset
@@ -213,7 +261,8 @@ class Deck:
                 surface.blit(text, text.get_rect(center=rect.center))
                 y += NUMBER_HEIGHT + 15
 
-        return clickable_rects
+        return clickable_buttons
+
 
 
          
@@ -274,51 +323,93 @@ def play():
         #create player areas for special card targeting
         player_area_rects = {}  # store player: rect for click detection
         # Bottom player
+        # BOTTOM PLAYER (Player 0)
         if len(players) > 0:
-            rect = pygame.Rect(540, 750, 200, 50)  # centered bottom
+            rect = pygame.Rect(540, 750, 200, 50)
             pygame.draw.rect(SCREEN, (0, 0, 255), rect)
             pygame.draw.rect(SCREEN, (0, 0, 0), rect, 3)
-            text = get_font(30).render(f"Player {players[0].number}", True, "white")
-            SCREEN.blit(text, text.get_rect(center=rect.center))
-            player_area_rects[players[0]] = rect
+
+            btn = Button(
+                image=None,
+                pos=rect.center,
+                text_input=f"Player {players[0].number}",
+                font=get_font(30),
+                base_color="white",
+                hovering_color="red"
+            )
+            btn.changeColor(PLAY_MOUSE_POS)
+            btn.update(SCREEN)
+            player_area_rects[players[0]] = btn
+
             score_text = get_font(20).render(f"Score: {players[0].total_score}", True, "black")
             SCREEN.blit(score_text, score_text.get_rect(center=(rect.centerx, rect.centery + 15)))
-            player_area_rects[players[0]] = rect
-        # Left player
+
+
+        # LEFT PLAYER (Player 1)
         if len(players) > 1:
-            rect = pygame.Rect(0, 300, 60, 200)  # middle-left
+            rect = pygame.Rect(0, 300, 60, 200)
             pygame.draw.rect(SCREEN, (0, 0, 255), rect)
             pygame.draw.rect(SCREEN, (0, 0, 0), rect, 3)
-            text = get_font(40).render(f"{players[1].number}", True, "white")
-            SCREEN.blit(text, text.get_rect(center=rect.center))
-            player_area_rects[players[1]] = rect
+
+            btn = Button(
+                image=None,
+                pos=rect.center,
+                text_input=f"{players[1].number}",
+                font=get_font(40),
+                base_color="white",
+                hovering_color="red"
+            )
+            btn.changeColor(PLAY_MOUSE_POS)
+            btn.update(SCREEN)
+            player_area_rects[players[1]] = btn
+
             score_text = get_font(20).render(f"{players[1].total_score}", True, "black")
             SCREEN.blit(score_text, score_text.get_rect(center=(rect.centerx, rect.centery + 30)))
-            player_area_rects[players[1]] = rect
 
-        # Top player
+
+        # TOP PLAYER (Player 2)
         if len(players) > 2:
-            rect = pygame.Rect(540, 0, 200, 50)  # top-middle
+            rect = pygame.Rect(540, 0, 200, 50)
             pygame.draw.rect(SCREEN, (0, 0, 255), rect)
             pygame.draw.rect(SCREEN, (0, 0, 0), rect, 3)
-            text = get_font(30).render(f"Player {players[2].number}", True, "white")
-            SCREEN.blit(text, text.get_rect(center=rect.center))
-            player_area_rects[players[2]] = rect
+
+            btn = Button(
+                image=None,
+                pos=rect.center,
+                text_input=f"Player {players[2].number}",
+                font=get_font(30),
+                base_color="white",
+                hovering_color="red"
+            )
+            btn.changeColor(PLAY_MOUSE_POS)
+            btn.update(SCREEN)
+            player_area_rects[players[2]] = btn
+
             score_text = get_font(20).render(f"Score: {players[2].total_score}", True, "black")
             SCREEN.blit(score_text, score_text.get_rect(center=(rect.centerx, rect.centery + 15)))
-            player_area_rects[players[2]] = rect
 
-        # Right player
+
+        # RIGHT PLAYER (Player 3)
         if len(players) > 3:
-            rect = pygame.Rect(1220, 300, 60, 200)  # middle-right
+            rect = pygame.Rect(1220, 300, 60, 200)
             pygame.draw.rect(SCREEN, (0, 0, 255), rect)
             pygame.draw.rect(SCREEN, (0, 0, 0), rect, 3)
-            text = get_font(40).render(f"{players[3].number}", True, "white")
-            SCREEN.blit(text, text.get_rect(center=rect.center))
-            player_area_rects[players[3]] = rect
+
+            btn = Button(
+                image=None,
+                pos=rect.center,
+                text_input=f"{players[3].number}",
+                font=get_font(40),
+                base_color="white",
+                hovering_color="red"
+            )
+            btn.changeColor(PLAY_MOUSE_POS)
+            btn.update(SCREEN)
+            player_area_rects[players[3]] = btn
+
             score_text = get_font(20).render(f"{players[3].total_score}", True, "black")
             SCREEN.blit(score_text, score_text.get_rect(center=(rect.centerx, rect.centery + 30)))
-            player_area_rects[players[3]] = rect
+
 
         # Display player cards and collect clickable special cards
         all_clickables = []
@@ -353,28 +444,32 @@ def play():
                     turn_index = (turn_index + 1) % len(players)
                     if end_game(players, deck):
                         return  
-
-                #special cards
-                for owner, rect, card in all_clickables:
-                    if rect.collidepoint(mx, my):
+                    
+                #for special card: selecting a card to use
+                for owner, button, card in all_clickables:
+                    if button.checkForInput(PLAY_MOUSE_POS):
                         choosing_card = card
                         choosing_owner = owner
-                        target_select_mode = True
+                        if card == "second chance":  # self-target
+                            use_second_chance(owner)
+                            owner.hand.remove(choosing_card)
+                        elif card == "freeze":  # self-targeted
+                            print(f"Player {owner.number} activated Freeze! Turn ends.")
+                            end_round(owner)
+                            turn_index = (turn_index + 1) % len(players)
+                            if end_game(players, deck):
+                                return
                         break
 
-                #for special card: selecting a target player (if in target selection mode)
+                # Selecting target player for freeze / flip3
                 if target_select_mode:
                     for p in players:
-                        if p != choosing_owner:  # cannot target self
-                            player_rect = player_area_rects[p]
-                            if player_rect.collidepoint(mx, my):
-                                # Apply effect
+                        if p != choosing_owner:
+                            if player_area_rects[p].checkForInput(PLAY_MOUSE_POS):
                                 if choosing_card == "freeze":
                                     use_freeze(p)
                                 elif choosing_card == "flip3":
                                     use_draw3(p)
-                                elif choosing_card == "second chance":
-                                    use_second_chance(choosing_owner)
 
                                 choosing_owner.hand.remove(choosing_card)
                                 target_select_mode = False
@@ -440,9 +535,8 @@ def rule():
             "Busting: If you draw a duplicate number card, you \"bust\" and score zero for the round. This can happen from \"hitting\" or from an action card.",
             "Scoring: If you \"stay,\" you add up the value of your unique cards at the end of the round. The game continues until someone reaches 200 points.",
             "Action cards: Special action cards can be played on yourself or opponents to help or hinder their progress.",
-            "Freeze: Forces a player to end their round immediately.",
-            "Flip three: Forces another player to take three more cards, one by one.",
-            "Second chance: Protects you from busting once if you draw a duplicate."
+            "Freeze: Forces yourself to end your round immediately.",
+            "Second Chance: Allows you to remove your last drawn card to avoid busting, and automatically score and ends your turn.",
         ]
         y = 50
         for i, line in enumerate(instructions):
